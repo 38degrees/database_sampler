@@ -49,6 +49,12 @@ cj.run
 
 ```
 
+Check differences between prod and staging:
+  `cj.detect_schema_differences`
+
+Copy the data saved in the export schema to the target database, without regenerating the sample:
+  `cj.copy_to_target`
+
 ### Caching the sample
 
 The sampled data gets written into a separate schema in the source database. If you wish to rebuild a staging database more quickly you can just run CopyJob#copy_to_target to recopy the cached data, which could save a large amount of time depending on the size of your source database. 
