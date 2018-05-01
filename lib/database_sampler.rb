@@ -34,6 +34,7 @@ module DatabaseSampler
         puts "Truncated #{result.cmd_tuples}" if result.cmd_tuples > 0
         `psql #{@target_database_url} --command "\\copy #{table} (#{column_string}) FROM tmp_copy.csv WITH CSV"`
         `rm tmp_copy.csv`
+        set_sequences_for_table(table)
       end
     end
 
@@ -95,7 +96,7 @@ module DatabaseSampler
 
     end
 
-    # private
+    private
 
     def get_foreign_keys(source=true)
       sql = %Q{SELECT
@@ -307,6 +308,17 @@ module DatabaseSampler
     def get_columns_for_table(table_name) 
       sql = "SELECT column_name FROM information_schema.columns WHERE table_schema = '#{@schema_name}' AND table_name = '#{table_name}'"
       @source_conn.exec(sql).to_a.map { |r| r['column_name'] }
+    end
+
+    def set_sequences_for_table(table_name)
+      sql = %Q{SELECT column_name, split_part(split_part(column_default, 'nextval(''',2),'''::regclass)',1) as sequence_name  FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '#{table_name}' AND column_default ilike '%nextval(%'}
+      sequences = @target_conn.exec(sql).to_a
+      sequences.each do |seq|
+        max = @target_conn.exec("SELECT MAX(#{seq['column_name']}) as max FROM #{table_name}").first['max']
+        if max.present?
+          @target_conn.exec("ALTER SEQUENCE #{seq['sequence_name']} RESTART WITH #{max}")
+        end
+      end
     end
 
     def anonymise
