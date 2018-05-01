@@ -25,8 +25,6 @@ module DatabaseSampler
     end
 
     def copy_to_target
-      puts @pre_copy_sql
-      @source_conn.exec(@pre_copy_sql) if @pre_copy_sql
       tables = get_tables_in_order
       tables.each do |table, _|
         column_string = get_columns_for_table(table).map { |c| %Q{\\"#{c}\\"} }.join(', ')
@@ -56,6 +54,10 @@ module DatabaseSampler
       copy_all
       anonymise
 
+      puts "Running pre-copy SQL..."
+      puts @pre_copy_sql
+      @source_conn.exec(@pre_copy_sql) if @pre_copy_sql
+      
       puts "Copying to target..."
       copy_to_target
 
@@ -76,7 +78,7 @@ module DatabaseSampler
       different_definition_cols = []
       both_cols.map do |col|
         source_col = source_cols.select{|scol| scol['table_name'] == col['table_name'] && scol['column_name'] == col['column_name'] }.first
-        target_col = source_cols.select{|tcol| tcol['table_name'] == col['table_name'] && tcol['column_name'] == col['column_name'] }.first
+        target_col = target_cols.select{|tcol| tcol['table_name'] == col['table_name'] && tcol['column_name'] == col['column_name'] }.first
         unless source_col == target_col
           different_definition_cols.push([source_col, target_col])
         end
