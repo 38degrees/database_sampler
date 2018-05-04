@@ -67,7 +67,7 @@ You may have a schema in the target database which is stricter than the source d
 
 - Only supports foreign keys that reference the `id` field of the parent table.
 - If the schemas of the tables differ at all you'll get errors - you can use the post_copy_sql parameter to add SQL that fixes this, but it's still a manual process.
-- Self relations aren't properly supported - so you need to make sure there aren't any self-relations using conditions
+- Self relations aren't properly supported, they are excluding from sampling. If you don't want such tables to be copied without sampling, add them to the exclude list.
 
 ## Recommendations
 
