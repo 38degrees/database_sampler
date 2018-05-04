@@ -121,8 +121,7 @@ module DatabaseSampler
         ON (t.table_name = c.table_name)
       WHERE t.table_schema = 'public'
         AND t.table_name NOT ilike 'list_members_part_list_ids_%'
-        AND (c.parent_table IS NULL OR t.table_name != c.parent_table)
-      ORDER BY t.table_name} # To avoid loops we remove self-references for now
+      ORDER BY t.table_name}
       
       if source
         @foreign_keys_source ||= (@source_conn.exec(sql).to_a + @manual_links).reject{ |fk| @exclude_tables.include?(fk['table_name']) || @exclude_tables.include?(fk['parent_table'])}
@@ -135,7 +134,7 @@ module DatabaseSampler
 
     def get_children(table_name)
       foreign_keys = get_foreign_keys(!@use_fks_from_target)
-      foreign_keys.select{ |r| r['parent_table'] == table_name }.map{ |r| r['table_name'] }
+      foreign_keys.select{ |r| r['parent_table'] == table_name and r['parent_table'] != r['table_name'] }.map{ |r| r['table_name'] }
     end
 
 
@@ -146,7 +145,7 @@ module DatabaseSampler
       network = {}
       foreign_keys.each do |row|
         data = network[row['table_name']] || {parents_count: 0, parents_remaining: 0, parents: {}, children: []}
-        if row['parent_table']
+        if row['parent_table'] and row['parent_table'] != row['table_name']
           data[:parents_count] += 1
           data[:parents_remaining] += 1
           data[:parents][row['parent_table']] = { source_column: row['column'], target_column: row['parent_column'] }
@@ -270,6 +269,11 @@ module DatabaseSampler
     end
 
     def make_sample_tables
+      # Reject self_relations from samples
+      foreign_keys = get_foreign_keys(!@use_fks_from_target)
+      self_relations = foreign_keys.select { |r| r['table_name'] == r['parent_table'] }.map { |r| r['table_name'] }
+      @samples.reject! { |s| self_relations.include? s['table'] }
+
       @samples.each do |sample|
         # Sampling a large table with ORDER BY RANDOM() is slow. So we use a faster method: generating a set of numbers in the range 1..max(id) for the table, and selecting those. 
         # To calculate the range and number of IDs we need, we need to know two things: the max_id and what proportion of the IDs between 1 and max(id) actually exist (the 'density')
