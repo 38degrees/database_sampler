@@ -314,9 +314,9 @@ module DatabaseSampler
       sql = %Q{SELECT column_name, split_part(split_part(column_default, 'nextval(''',2),'''::regclass)',1) as sequence_name  FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '#{table_name}' AND column_default ilike '%nextval(%'}
       sequences = @target_conn.exec(sql).to_a
       sequences.each do |seq|
-        max = @target_conn.exec("SELECT MAX(#{seq['column_name']}) as max FROM #{table_name}").first['max']
+        max = @target_conn.exec("SELECT MAX(#{seq['column_name']}) as max FROM #{table_name}").first['max'].to_i
         if max.present?
-          @target_conn.exec("ALTER SEQUENCE #{seq['sequence_name']} RESTART WITH #{max}")
+          @target_conn.exec("ALTER SEQUENCE #{seq['sequence_name']} RESTART WITH #{max+1}")
         end
       end
     end
