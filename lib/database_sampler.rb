@@ -157,8 +157,9 @@ module DatabaseSampler
         network[row['table_name']] = data
       end
 
-      # If a table has no parents or children, reject it
-      network.reject!{ |k, v| v[:parents_count] == 0 && v[:children].count == 0 }
+      # If a table does not exist in the other DB, reject it
+      other_tables = get_foreign_keys(@use_fks_from_target).map { |row| row['table_name'] }
+      network.keep_if { |k, v| other_tables.include? k }
 
       return network
     end
