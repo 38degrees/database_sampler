@@ -25,17 +25,18 @@ module DatabaseSampler
     end
 
     def copy_to_target
-      tables = get_tables_in_order
-      tables.each do |table, _|
-        column_string = get_columns_for_table(table).map { |c| %Q{\\"#{c}\\"} }.join(', ')
-        puts table
-        `psql #{@source_database_url} --command "\\copy (SELECT #{column_string} FROM #{@schema_name}.#{table}) TO tmp_copy.csv WITH CSV"`
-        result = @target_conn.exec("TRUNCATE #{table} CASCADE")
-        puts "Truncated #{result.cmd_tuples}" if result.cmd_tuples > 0
-        `psql #{@target_database_url} --command "\\copy #{table} (#{column_string}) FROM tmp_copy.csv WITH CSV"`
-        `rm tmp_copy.csv`
-        set_sequences_for_table(table)
+      tic = Time.now
+      table_groups = get_tables_in_order(true) # Get in groups
+      table_groups.each_with_index do |tg, i|
+        tg.each_slice(16) do |tables|
+          puts("Copying group #{i+1}: #{tables}")
+          tables.each { |table| copy_table_to_target(table) }
+          Process.waitall
+          tables.map { |table| set_sequences_for_table(table) } 
+        end 
       end
+      toc = Time.now
+      puts "Completed in #{(toc - tic).round} seconds"
     end
 
     def run
@@ -97,6 +98,12 @@ module DatabaseSampler
     end
 
     private
+
+    def copy_table_to_target(table)
+      column_string = get_columns_for_table(table).map { |c| %Q{\\"#{c}\\"} }.join(', ')
+      r, w = IO.pipe
+      pid = Process.spawn(%Q{psql #{@target_database_url} --command "TRUNCATE #{table} CASCADE" && psql #{@source_database_url} --command "\\copy (SELECT #{column_string} FROM #{@schema_name}.#{table}) TO tmp_copy_#{table}.csv WITH CSV" && psql #{@target_database_url} --command "\\copy #{table} (#{column_string}) FROM tmp_copy_#{table}.csv WITH CSV" && rm tmp_copy_#{table}.csv}, :out => w)
+    end
 
     def get_foreign_keys(source=true)
       sql = %Q{SELECT
@@ -200,27 +207,33 @@ module DatabaseSampler
       puts result.cmd_tuples
     end
 
-    def get_tables_in_order
+    def get_tables_in_order(group_tables = false)
       network = get_network
-      copy_order = []
+      groups = []
 
       while true
+        group = []
         tables = network.select { |k,v| v[:parents_remaining] == 0 }
         break if tables.count == 0
         tables.each do |table, data|
           data[:children].each do |child|
             network[child][:parents_remaining] -= 1
           end
-          copy_order.push(table)
+          group.push(table)
           network.delete table
         end
+        groups.push(group)
       end
 
       if network.count > 0
         raise "Couldn't find order to copy all tables. #{network} still remaining."
       end
 
-      return copy_order    
+      if group_tables
+        return groups
+      else
+        return groups.flatten
+      end    
     end
 
     # This method searches all tables with no parents remaining, and then decrements the parents_remaining count on their child tables
